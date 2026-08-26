@@ -521,6 +521,16 @@
     let pendingMatch = null;
     let currentYear = null;
 
+    // First time the "添加书目" modal opens, prefill with current year/month.
+    // After every successful add, remember the used year/month so the next open
+    // defaults to the same period (the user is usually adding several books for
+    // the same reading month).
+    const _now = new Date();
+    let addModalDefaults = {
+      year: _now.getFullYear(),
+      month: _now.getMonth() + 1,
+    };
+
     function bookDisplayTitle(book) {
       return book.subtitle ? `${book.title}：${book.subtitle}` : book.title;
     }
@@ -647,10 +657,8 @@
     function openAddBook() {
       addForm.reset();
       showAddError("");
-      if (currentYear) document.getElementById("add-year").value = currentYear;
-      const now = new Date();
-      if (!currentYear) document.getElementById("add-year").value = now.getFullYear();
-      document.getElementById("add-month").value = String(now.getMonth() + 1);
+      document.getElementById("add-year").value = addModalDefaults.year;
+      document.getElementById("add-month").value = String(addModalDefaults.month);
       addOverlay.classList.add("open");
       addOverlay.setAttribute("aria-hidden", "false");
       document.getElementById("add-url").focus();
@@ -694,6 +702,12 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "添加失败");
+        // Remember the successfully submitted period so the next "添加书目"
+        // defaults to this same year/month (great for batch-adding a month).
+        addModalDefaults = {
+          year: payload.year,
+          month: payload.month,
+        };
         closeAddBook();
         await loadYears();
         yearSelect.value = payload.year;
