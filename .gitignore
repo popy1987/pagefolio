@@ -1,0 +1,15 @@
+# Local reading log — do not commit personal data
+reading.db
+
+# Downloaded covers (keep cover/.gitkeep)
+cover/*
+!cover/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

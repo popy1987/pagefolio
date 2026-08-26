@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pagefolio</title>
+  <style>
+    :root {
+      --bg: #f7f5f2;
+      --surface: #ffffff;
+      --text: #1c1b19;
+      --muted: #7a756c;
+      --line: #e8e4dd;
+      --accent: #3d5a4c;
+      --accent-soft: #e8f0ec;
+      --shadow: 0 12px 40px rgba(28, 27, 25, 0.08);
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    .wrap {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 48px 24px 80px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 48px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: flex-end;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-top: 4px;
+    }
+
+    .year-select {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 140px;
+    }
+
+    .year-select label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    select {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%237a756c' d='M1 1l5 5 5-5'/%3E%3C/svg%3E") no-repeat right 14px center;
+      border-radius: 8px;
+      padding: 10px 36px 10px 14px;
+      font-size: 1rem;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    select:focus {
+      outline: 2px solid var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 80px 0;
+    }
+
+    .month-block {
+      margin-bottom: 48px;
+    }
+
+    .month-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .month-title::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+      gap: 16px;
+    }
+
+    .book-card {
+      border: none;
+      background: none;
+      cursor: pointer;
+      text-align: left;
+      padding: 0;
+      transition: transform 0.15s ease;
+    }
+
+    .book-card:hover { transform: translateY(-2px); }
+
+    .cover {
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      object-fit: cover;
+      border-radius: 6px;
+      background: var(--line);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+      display: block;
+    }
+
+    .book-title {
+      font-size: 0.78rem;
+      margin-top: 8px;
+      color: var(--text);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* overlay */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(28, 27, 25, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 100;
+    }
+
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      width: min(520px, 100%);
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 28px;
+      position: relative;
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      border: none;
+      background: var(--bg);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 1.1rem;
+      color: var(--muted);
+    }
+
+    .modal-cover {
+      width: 140px;
+      aspect-ratio: 2 / 3;
+      object-fit: cover;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    }
+
+    .modal h2 {
+      font-size: 1.35rem;
+      margin-bottom: 6px;
+      padding-right: 36px;
+    }
+
+    .modal .author {
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+
+    .modal-subtitle {
+      margin-top: -12px;
+      margin-bottom: 8px;
+    }
+
+    .detail-list {
+      list-style: none;
+      font-size: 0.9rem;
+    }
+
+    .detail-list li {
+      padding: 8px 0;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 12px;
+    }
+
+    .detail-list .label {
+      color: var(--muted);
+      min-width: 72px;
+      flex-shrink: 0;
+    }
+
+    .btn-row {
+      margin-top: 24px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    button.primary, button.ghost {
+      border-radius: 8px;
+      padding: 10px 16px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+
+    button.primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.ghost {
+      background: var(--surface);
+      border-color: var(--line);
+      color: var(--text);
+    }
+
+    button.danger {
+      background: var(--surface);
+      border: 1px solid #e8c4c0;
+      color: #b42318;
+    }
+
+    button.danger:hover {
+      background: #fdf4f3;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .match-panel {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid var(--line);
+      display: none;
+    }
+
+    .match-panel.open { display: block; }
+
+    .match-panel label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .input-row input {
+      flex: 1;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+    }
+
+    .input-row input:focus {
+      outline: 2px solid var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .preview {
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--bg);
+      border-radius: 8px;
+      display: none;
+    }
+
+    .preview.open { display: block; }
+
+    .preview-inner {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .preview img {
+      width: 72px;
+      aspect-ratio: 2 / 3;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+
+    .preview h3 { font-size: 1rem; margin-bottom: 4px; }
+    .preview p { font-size: 0.85rem; color: var(--muted); }
+
+    .match-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .error {
+      color: #b42318;
+      font-size: 0.85rem;
+      margin-top: 8px;
+    }
+
+    .form-field {
+      margin-bottom: 16px;
+    }
+
+    .form-field label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .form-field input,
+    .form-field select,
+    .form-field textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+
+    .form-field input:focus,
+    .form-field select:focus,
+    .form-field textarea:focus {
+      outline: 2px solid var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .modal h2.form-title {
+      font-size: 1.25rem;
+      margin-bottom: 20px;
+      padding-right: 36px;
+    }
+
+    .confirm-actions {
+      margin-top: 16px;
+      display: flex;
+      gap: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div>
+        <h1>Pagefolio</h1>
+        <p class="subtitle">年度阅读书目</p>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="primary" id="btn-add-book">添加书目</button>
+        <div class="year-select">
+          <label for="year">年份</label>
+          <select id="year" disabled>
+            <option value="">加载中…</option>
+          </select>
+        </div>
+      </div>
+    </header>
+    <main id="content">
+      <p class="empty">请选择年份</p>
+    </main>
+  </div>
+
+  <div class="overlay" id="overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="modal-close" aria-label="关闭">×</button>
+      <img class="modal-cover" id="modal-cover" src="/assets/no-cover.svg" alt="">
+      <h2 id="modal-title"></h2>
+      <p class="author modal-subtitle" id="modal-subtitle" hidden></p>
+      <p class="author" id="modal-author"></p>
+      <ul class="detail-list" id="modal-details"></ul>
+      <div class="btn-row">
+        <button type="button" class="ghost" id="btn-match">匹配不正确</button>
+        <button type="button" class="danger" id="btn-remove">移除</button>
+      </div>
+      <div class="match-panel" id="match-panel">
+        <label for="source-url">书籍链接（豆瓣 / Goodreads / Amazon）</label>
+        <div class="input-row">
+          <input type="url" id="source-url" placeholder="豆瓣、Goodreads 或 Amazon 书籍页链接">
+          <button type="button" class="primary" id="btn-verify">验证</button>
+        </div>
+        <p class="match-hint">支持 book.douban.com、goodreads.com/book/show、amazon.com/dp 等链接</p>
+        <p class="error" id="match-error" hidden></p>
+        <div class="preview" id="preview">
+          <div class="preview-inner">
+            <img id="preview-cover" src="" alt="">
+            <div>
+              <h3 id="preview-title"></h3>
+              <p id="preview-meta"></p>
+            </div>
+          </div>
+          <p style="margin-top:12px;font-size:0.9rem;">是否配备此书信息？</p>
+          <div class="confirm-actions">
+            <button type="button" class="primary" id="btn-confirm">是，更新</button>
+            <button type="button" class="ghost" id="btn-cancel-preview">取消</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="add-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="add-close" aria-label="关闭">×</button>
+      <h2 class="form-title">添加书目</h2>
+      <form id="add-form">
+        <div class="form-field">
+          <label for="add-url">链接</label>
+          <input type="url" id="add-url" required placeholder="豆瓣 / Goodreads / Amazon 书籍页链接">
+          <p class="match-hint">自动识别 book.douban.com、goodreads.com、amazon.com 等链接</p>
+        </div>
+        <div class="form-row">
+          <div class="form-field">
+            <label for="add-year">年度</label>
+            <input type="number" id="add-year" min="1900" max="2100" required placeholder="2025">
+          </div>
+          <div class="form-field">
+            <label for="add-month">月份</label>
+            <select id="add-month" required>
+              <option value="1">一月</option>
+              <option value="2">二月</option>
+              <option value="3">三月</option>
+              <option value="4">四月</option>
+              <option value="5">五月</option>
+              <option value="6">六月</option>
+              <option value="7">七月</option>
+              <option value="8">八月</option>
+              <option value="9">九月</option>
+              <option value="10">十月</option>
+              <option value="11">十一月</option>
+              <option value="12">十二月</option>
+            </select>
+          </div>
+        </div>
+        <p class="error" id="add-error" hidden></p>
+        <div class="btn-row">
+          <button type="submit" class="primary" id="add-submit">保存</button>
+          <button type="button" class="ghost" id="add-cancel">取消</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const NO_COVER = "/assets/no-cover.svg";
+    const MONTHS = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
+
+    const yearSelect = document.getElementById("year");
+    const content = document.getElementById("content");
+    const overlay = document.getElementById("overlay");
+    const matchPanel = document.getElementById("match-panel");
+    const preview = document.getElementById("preview");
+    const matchError = document.getElementById("match-error");
+    const sourceUrl = document.getElementById("source-url");
+    const addOverlay = document.getElementById("add-overlay");
+    const addForm = document.getElementById("add-form");
+    const addError = document.getElementById("add-error");
+
+    let currentBookId = null;
+    let pendingMatch = null;
+    let currentYear = null;
+
+    function bookDisplayTitle(book) {
+      return book.subtitle ? `${book.title}：${book.subtitle}` : book.title;
+    }
+
+    function bookCreditLine(book) {
+      const parts = [];
+      if (book.author) parts.push(`作者：${book.author}`);
+      if (book.translator) parts.push(`译者：${book.translator}`);
+      return parts.join("　") || "作者未知";
+    }
+
+    function coverSrc(book) {
+      return book.local_cover_path ? `/${book.local_cover_path}` : NO_COVER;
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s ?? "";
+      return d.innerHTML;
+    }
+
+    async function loadYears() {
+      const years = await fetch("/api/years").then(r => r.json());
+      yearSelect.innerHTML = years.length
+        ? years.map(y => `<option value="${y}">${y}</option>`).join("")
+        : `<option value="">暂无数据</option>`;
+      yearSelect.disabled = !years.length;
+      if (years.length) {
+        currentYear = years[0];
+        yearSelect.value = currentYear;
+        loadReading(currentYear);
+      }
+    }
+
+    async function loadReading(year) {
+      currentYear = year;
+      content.innerHTML = `<p class="empty">加载中…</p>`;
+      const data = await fetch(`/api/reading?year=${year}`).then(r => r.json());
+      const months = data.months || {};
+      const keys = Object.keys(months).map(Number).sort((a, b) => a - b);
+
+      if (!keys.length) {
+        content.innerHTML = `<p class="empty">${year} 年暂无阅读记录</p>`;
+        return;
+      }
+
+      content.innerHTML = keys.map(m => `
+        <section class="month-block">
+          <h2 class="month-title">${MONTHS[m - 1]}</h2>
+          <div class="grid">
+            ${months[m].map(book => `
+              <button class="book-card" data-id="${book.id}" type="button">
+                <img class="cover" src="${coverSrc(book)}" alt="${esc(bookDisplayTitle(book))}" loading="lazy">
+                <p class="book-title">${esc(bookDisplayTitle(book))}</p>
+              </button>
+            `).join("")}
+          </div>
+        </section>
+      `).join("");
+
+      content.querySelectorAll(".book-card").forEach(card => {
+        card.addEventListener("click", () => openBook(Number(card.dataset.id)));
+      });
+    }
+
+    async function openBook(id) {
+      currentBookId = id;
+      resetMatchPanel();
+      const book = await fetch(`/api/books/${id}`).then(r => r.json());
+      document.getElementById("modal-cover").src = coverSrc(book);
+      document.getElementById("modal-title").textContent = book.title;
+      document.getElementById("modal-subtitle").textContent = book.subtitle || "";
+      document.getElementById("modal-subtitle").hidden = !book.subtitle;
+      document.getElementById("modal-author").textContent = bookCreditLine(book);
+
+      const readings = (book.readings || [])
+        .map(r => `${r.year} 年 ${r.month} 月${r.finished_on ? `（${r.finished_on}）` : ""}`)
+        .join("；") || "—";
+
+      const rows = [
+        ["副标题", book.subtitle],
+        ["作者", book.author],
+        ["译者", book.translator],
+        ["ISBN", book.isbn],
+        ["出版社", book.publisher],
+        ["语言", book.language],
+        ["备注", book.notes],
+        ["阅读记录", readings],
+      ].filter(([, v]) => v);
+
+      document.getElementById("modal-details").innerHTML = rows
+        .map(([label, value]) => `<li><span class="label">${esc(label)}</span><span>${esc(value)}</span></li>`)
+        .join("");
+
+      overlay.classList.add("open");
+      overlay.setAttribute("aria-hidden", "false");
+    }
+
+    function closeModal() {
+      overlay.classList.remove("open");
+      overlay.setAttribute("aria-hidden", "true");
+      currentBookId = null;
+      resetMatchPanel();
+    }
+
+    function resetMatchPanel() {
+      matchPanel.classList.remove("open");
+      preview.classList.remove("open");
+      sourceUrl.value = "";
+      matchError.hidden = true;
+      pendingMatch = null;
+    }
+
+    function showError(msg) {
+      matchError.textContent = msg;
+      matchError.hidden = !msg;
+    }
+
+    function showAddError(msg) {
+      addError.textContent = msg;
+      addError.hidden = !msg;
+    }
+
+    function openAddBook() {
+      addForm.reset();
+      showAddError("");
+      if (currentYear) document.getElementById("add-year").value = currentYear;
+      const now = new Date();
+      if (!currentYear) document.getElementById("add-year").value = now.getFullYear();
+      document.getElementById("add-month").value = String(now.getMonth() + 1);
+      addOverlay.classList.add("open");
+      addOverlay.setAttribute("aria-hidden", "false");
+      document.getElementById("add-url").focus();
+    }
+
+    function closeAddBook() {
+      addOverlay.classList.remove("open");
+      addOverlay.setAttribute("aria-hidden", "true");
+      showAddError("");
+    }
+
+    document.getElementById("btn-add-book").addEventListener("click", openAddBook);
+    document.getElementById("add-close").addEventListener("click", closeAddBook);
+    document.getElementById("add-cancel").addEventListener("click", closeAddBook);
+    addOverlay.addEventListener("click", e => { if (e.target === addOverlay) closeAddBook(); });
+
+    addForm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const url = document.getElementById("add-url").value.trim();
+      const yearVal = document.getElementById("add-year").value;
+      const monthVal = document.getElementById("add-month").value;
+
+      if (!url) { showAddError("请填写链接"); return; }
+      if (!yearVal || !monthVal) { showAddError("请填写年度和月份"); return; }
+
+      const payload = {
+        url,
+        year: Number(yearVal),
+        month: Number(monthVal),
+      };
+
+      showAddError("");
+      const btn = document.getElementById("add-submit");
+      btn.disabled = true;
+      btn.textContent = "解析中…";
+      try {
+        const res = await fetch("/api/books", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "添加失败");
+        closeAddBook();
+        await loadYears();
+        yearSelect.value = payload.year;
+        currentYear = payload.year;
+        await loadReading(currentYear);
+      } catch (err) {
+        showAddError(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "保存";
+      }
+    });
+
+    yearSelect.addEventListener("change", () => loadReading(Number(yearSelect.value)));
+    document.getElementById("modal-close").addEventListener("click", closeModal);
+    overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+
+    document.getElementById("btn-match").addEventListener("click", () => {
+      matchPanel.classList.toggle("open");
+      preview.classList.remove("open");
+      showError("");
+    });
+
+    document.getElementById("btn-remove").addEventListener("click", async () => {
+      if (!currentBookId) return;
+      const title = bookDisplayTitle({ title: document.getElementById("modal-title").textContent, subtitle: document.getElementById("modal-subtitle").textContent });
+      if (!confirm(`确定移除《${title}》？\n将删除该书及全部阅读记录。`)) return;
+
+      const btn = document.getElementById("btn-remove");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/books/${currentBookId}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "移除失败");
+        closeModal();
+        await loadYears();
+        if (currentYear) await loadReading(currentYear);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("btn-verify").addEventListener("click", async () => {
+      const url = sourceUrl.value.trim();
+      if (!url) { showError("请输入书籍链接"); return; }
+      showError("");
+      const btn = document.getElementById("btn-verify");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/books/${currentBookId}/verify-source`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "验证失败");
+        pendingMatch = { url, ...data };
+        document.getElementById("preview-cover").src = data.cover_url || NO_COVER;
+        document.getElementById("preview-title").textContent = bookDisplayTitle(data);
+        document.getElementById("preview-meta").textContent = [
+          data.source_label ? `来源：${data.source_label}` : null,
+          data.author ? `作者：${data.author}` : null,
+          data.translator ? `译者：${data.translator}` : null,
+          data.isbn ? `ISBN ${data.isbn}` : null,
+          data.asin ? `ASIN ${data.asin}` : null,
+          data.publisher,
+        ].filter(Boolean).join(" · ");
+        preview.classList.add("open");
+      } catch (err) {
+        showError(err.message);
+        preview.classList.remove("open");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("btn-cancel-preview").addEventListener("click", () => {
+      preview.classList.remove("open");
+      pendingMatch = null;
+    });
+
+    document.getElementById("btn-confirm").addEventListener("click", async () => {
+      if (!pendingMatch) return;
+      const btn = document.getElementById("btn-confirm");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/books/${currentBookId}/match-source`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: pendingMatch.url }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "更新失败");
+        closeModal();
+        await loadReading(currentYear);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    loadYears();
+  </script>
+</body>
+</html>
