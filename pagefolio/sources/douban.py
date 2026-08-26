@@ -7,7 +7,27 @@ import re
 import requests
 from bs4 import BeautifulSoup
 
-from pagefolio.config import REQUEST_TIMEOUT, USER_AGENT
+from pagefolio.config import DOUBAN_COOKIE, REQUEST_TIMEOUT, USER_AGENT
+
+
+def _inject_douban_cookies(session: requests.Session) -> None:
+    """Apply logged-in Douban cookies (if configured) to bypass HTTP 403.
+
+    The raw cookie string looks like:
+        bid=xxxxx; __yadk_uid=xxxxx; _pk_id.100001.3ac3=xxxxx; ...
+    """
+    if not DOUBAN_COOKIE:
+        return
+    for chunk in DOUBAN_COOKIE.split(";"):
+        if "=" not in chunk:
+            continue
+        k, v = chunk.split("=", 1)
+        k = k.strip()
+        v = v.strip()
+        if not k:
+            continue
+        session.cookies.set(k, v, domain=".douban.com")
+
 
 session = requests.Session()
 session.headers.update(
@@ -15,8 +35,10 @@ session.headers.update(
         "User-Agent": USER_AGENT,
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://book.douban.com/",
     }
 )
+_inject_douban_cookies(session)
 
 
 def extract_subject_id(url: str) -> str | None:

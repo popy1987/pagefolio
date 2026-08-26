@@ -1,4 +1,4 @@
-"""Unified metadata fetcher: Douban / Goodreads / Amazon URLs."""
+"""Unified metadata fetcher: Douban / Dangdang / Goodreads / Amazon URLs."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from pagefolio.config import REQUEST_TIMEOUT, USER_AGENT
+from pagefolio.sources.dangdang import fetch_product as fetch_dangdang
 from pagefolio.sources.douban import fetch_subject as fetch_douban
 
 session = requests.Session()
@@ -21,6 +22,7 @@ session.headers.update(
 
 SOURCE_LABELS = {
     "douban": "豆瓣",
+    "dangdang": "当当",
     "goodreads": "Goodreads",
     "amazon": "Amazon",
 }
@@ -30,11 +32,13 @@ def detect_source(url: str) -> str:
     u = url.strip().lower()
     if "douban.com" in u:
         return "douban"
+    if "dangdang.com" in u:
+        return "dangdang"
     if "goodreads.com" in u:
         return "goodreads"
     if re.search(r"amazon\.(com|cn|co\.uk|de|fr|jp)", u):
         return "amazon"
-    raise ValueError("不支持的链接。请使用豆瓣、Goodreads 或 Amazon 的书籍页面链接。")
+    raise ValueError("不支持的链接。请使用豆瓣或当当的书籍页面链接。")
 
 
 def _normalize(info: dict, source: str, source_url: str) -> dict:
@@ -69,6 +73,21 @@ def fetch_from_url(url: str) -> dict:
             },
             source,
             raw.get("douban_url") or url,
+        )
+    if source == "dangdang":
+        raw = fetch_dangdang(url)
+        return _normalize(
+            {
+                "title": raw["title"],
+                "subtitle": raw.get("subtitle"),
+                "author": raw.get("author"),
+                "translator": raw.get("translator"),
+                "isbn": raw.get("isbn"),
+                "publisher": raw.get("publisher"),
+                "cover_url": raw.get("cover_url"),
+            },
+            source,
+            raw.get("dangdang_url") or url,
         )
     if source == "goodreads":
         return _fetch_goodreads(url)

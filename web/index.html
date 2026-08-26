@@ -435,12 +435,12 @@
         <button type="button" class="danger" id="btn-remove">移除</button>
       </div>
       <div class="match-panel" id="match-panel">
-        <label for="source-url">书籍链接（豆瓣 / Goodreads / Amazon）</label>
+        <label for="source-url">书籍链接（豆瓣 / 当当）</label>
         <div class="input-row">
-          <input type="url" id="source-url" placeholder="豆瓣、Goodreads 或 Amazon 书籍页链接">
+          <input type="url" id="source-url" placeholder="豆瓣或当当书籍页链接">
           <button type="button" class="primary" id="btn-verify">验证</button>
         </div>
-        <p class="match-hint">支持 book.douban.com、goodreads.com/book/show、amazon.com/dp 等链接</p>
+        <p class="match-hint">支持 book.douban.com/subject、product.dangdang.com 等链接</p>
         <p class="error" id="match-error" hidden></p>
         <div class="preview" id="preview">
           <div class="preview-inner">
@@ -467,8 +467,8 @@
       <form id="add-form">
         <div class="form-field">
           <label for="add-url">链接</label>
-          <input type="url" id="add-url" required placeholder="豆瓣 / Goodreads / Amazon 书籍页链接">
-          <p class="match-hint">自动识别 book.douban.com、goodreads.com、amazon.com 等链接</p>
+          <input type="url" id="add-url" required placeholder="豆瓣或当当书籍页链接">
+          <p class="match-hint">自动识别 book.douban.com/subject、product.dangdang.com 等链接</p>
         </div>
         <div class="form-row">
           <div class="form-field">

@@ -1,4 +1,4 @@
-"""Batch cover scraping (CLI). Source order: Douban → Amazon → Goodreads."""
+"""Batch cover scraping (CLI). Source order: Dangdang → Douban → Goodreads."""
 
 from __future__ import annotations
 
@@ -11,8 +11,30 @@ import urllib.parse
 import requests
 from bs4 import BeautifulSoup
 
-from pagefolio.config import COVER_DIR, DB_PATH, REQUEST_TIMEOUT, SCRAPE_DELAY_SEC, USER_AGENT
+from pagefolio.config import (
+    COVER_DIR,
+    DB_PATH,
+    DOUBAN_COOKIE,
+    REQUEST_TIMEOUT,
+    SCRAPE_DELAY_SEC,
+    USER_AGENT,
+)
 from pagefolio.db import connect
+
+
+def _inject_douban_cookies(session: requests.Session) -> None:
+    """Apply logged-in Douban cookies (if configured) to cover scraping too."""
+    if not DOUBAN_COOKIE:
+        return
+    for chunk in DOUBAN_COOKIE.split(";"):
+        if "=" not in chunk:
+            continue
+        k, v = chunk.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if not k:
+            continue
+        session.cookies.set(k, v, domain=".douban.com")
+
 
 session = requests.Session()
 session.headers.update(
@@ -20,8 +42,10 @@ session.headers.update(
         "User-Agent": USER_AGENT,
         "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Referer": "https://book.douban.com/",
     }
 )
+_inject_douban_cookies(session)
 
 
 def cover_filename(book_id: int) -> str:
@@ -39,6 +63,8 @@ def sleep() -> None:
 def download_image(url: str, dest) -> bool:
     if not url or url.startswith("data:"):
         return False
+    if url.startswith("//"):
+        url = "https:" + url
     url = re.sub(r"/s\d+x\d+/", "/l/", url)
     url = url.replace("/view/subject/s/", "/view/subject/l/")
 
@@ -46,6 +72,8 @@ def download_image(url: str, dest) -> bool:
     headers = {}
     if "doubanio.com" in url:
         headers["Referer"] = "https://book.douban.com/"
+    if "ddimg.cn" in url or "dangdang.com" in url:
+        headers["Referer"] = "https://www.dangdang.com/"
     resp = session.get(url, timeout=REQUEST_TIMEOUT, stream=True, headers=headers)
     if resp.status_code != 200:
         return False
@@ -96,32 +124,41 @@ def _cover_from_douban(book: sqlite3.Row) -> str | None:
     return None
 
 
-def _amazon_cover_from_html(html: str) -> str | None:
-    soup = BeautifulSoup(html, "lxml")
-    for selector in ("img.s-image", "#imgTagWrapperId img", "#landingImage"):
-        img = soup.select_one(selector)
-        if not img:
-            continue
-        src = img.get("src") or img.get("data-src")
-        if src and ("amazon" in src or src.startswith("http")):
-            return src
-    return None
-
-
-def _cover_from_amazon(book: sqlite3.Row) -> str | None:
-    queries = [q for q in [book["asin"], book["isbn"], _search_query(book)] if q]
-    for host in ("https://www.amazon.com", "https://www.amazon.cn"):
-        for q in queries:
-            sleep()
-            url = f"{host}/dp/{q}" if book["asin"] and q == book["asin"] else f"{host}/s?k={urllib.parse.quote(q)}"
-            try:
-                resp = session.get(url, timeout=REQUEST_TIMEOUT)
-            except requests.RequestException:
+def _cover_from_dangdang(book: sqlite3.Row) -> str | None:
+    queries = [q for q in [_search_query(book), book["title"]] if q]
+    for q in queries:
+        sleep()
+        url = "https://search.dangdang.com/?key=" + urllib.parse.quote(q) + "&act=input"
+        try:
+            resp = session.get(
+                url,
+                timeout=REQUEST_TIMEOUT,
+                headers={"Referer": "https://www.dangdang.com/"},
+            )
+            if resp.status_code != 200:
                 continue
-            if resp.status_code == 200:
-                cover = _amazon_cover_from_html(resp.text)
-                if cover:
-                    return cover
+            soup = BeautifulSoup(resp.text, "lxml")
+            ul = soup.select_one("ul.bigimg")
+            if ul:
+                first_li = ul.select_one("li")
+                if first_li:
+                    img = first_li.select_one("img")
+                    if img:
+                        src = img.get("src") or img.get("data-original")
+                        if src and ("ddimg" in src or "img" in src):
+                            if src.startswith("//"):
+                                src = "https:" + src
+                            return src
+            # fallback: any ddimg image with non-empty alt
+            for img in soup.find_all("img"):
+                src = img.get("src") or img.get("data-original") or ""
+                alt = (img.get("alt") or "").strip()
+                if ("ddimg" in src or "ddimg.cn" in src) and len(alt) > 2:
+                    if src.startswith("//"):
+                        src = "https:" + src
+                    return src
+        except requests.RequestException:
+            continue
     return None
 
 
@@ -142,7 +179,11 @@ def _cover_from_goodreads(book: sqlite3.Row) -> str | None:
     return re.sub(r"\._[A-Z0-9]+_\.", ".", src) if src else None
 
 
-SOURCES = (("douban", _cover_from_douban), ("amazon", _cover_from_amazon), ("goodreads", _cover_from_goodreads))
+SOURCES = (
+    ("dangdang", _cover_from_dangdang),
+    ("douban", _cover_from_douban),
+    ("goodreads", _cover_from_goodreads),
+)
 
 
 def query_books(
