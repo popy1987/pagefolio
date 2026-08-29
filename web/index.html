@@ -520,6 +520,10 @@
     let currentBookId = null;
     let pendingMatch = null;
     let currentYear = null;
+    // 操作某本书后 reload 阅读列表时，希望滚动到该书对应的 card
+    let focusBookId = null;
+    // 记录之前的 window scrollY（兜底用，没找到 focus book 时回滚到这里）
+    let savedWindowScrollY = 0;
 
     // First time the "添加书目" modal opens, prefill with current year/month.
     // After every successful add, remember the used year/month so the next open
@@ -574,6 +578,7 @@
 
       if (!keys.length) {
         content.innerHTML = `<p class="empty">${year} 年暂无阅读记录</p>`;
+        focusBookId = null;
         return;
       }
 
@@ -594,11 +599,32 @@
       content.querySelectorAll(".book-card").forEach(card => {
         card.addEventListener("click", () => openBook(Number(card.dataset.id)));
       });
+
+      // ===== 滚动恢复：优先滚到 focusBookId 对应卡片，否则回滚到 savedWindowScrollY =====
+      let restored = false;
+      if (focusBookId != null) {
+        const targetCard = content.querySelector(`.book-card[data-id="${focusBookId}"]`);
+        if (targetCard) {
+          targetCard.scrollIntoView({ block: "center", behavior: "instant" });
+          // 轻微高亮一下让用户看到位置
+          targetCard.animate(
+            [{ filter: "brightness(1.1)" }, { filter: "brightness(1)" }],
+            { duration: 450, easing: "ease-out" }
+          );
+          restored = true;
+        }
+      }
+      if (!restored) {
+        window.scrollTo({ top: savedWindowScrollY, left: 0, behavior: "instant" });
+      }
+      focusBookId = null;
     }
 
     async function openBook(id) {
       currentBookId = id;
       resetMatchPanel();
+      // 打开任何书目前，先记住当前主页面滚动位置，后续任何操作都会在 loadReading 后恢复
+      savedWindowScrollY = window.scrollY;
       const book = await fetch(`/api/books/${id}`).then(r => r.json());
       document.getElementById("modal-cover").src = coverSrc(book);
       document.getElementById("modal-title").textContent = book.title;
@@ -695,6 +721,7 @@
       btn.disabled = true;
       btn.textContent = "解析中…";
       try {
+        savedWindowScrollY = window.scrollY;
         const res = await fetch("/api/books", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -708,6 +735,8 @@
           year: payload.year,
           month: payload.month,
         };
+        // 滚动到刚刚新增的那本书对应的卡片位置
+        if (data?.book?.id) focusBookId = data.book.id;
         closeAddBook();
         await loadYears();
         yearSelect.value = payload.year;
@@ -726,9 +755,16 @@
     overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
 
     document.getElementById("btn-match").addEventListener("click", () => {
+      // 展开/收起 match-panel 会改变 modal 内容高度，先记住 modal 当前滚动位置再恢复
+      const modalEl = document.querySelector("#overlay .modal");
+      const savedScrollTop = modalEl?.scrollTop ?? 0;
       matchPanel.classList.toggle("open");
       preview.classList.remove("open");
       showError("");
+      // 等待下一帧 layout 完成后再恢复 scrollTop（instant 无动画）
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (modalEl) modalEl.scrollTo({ top: savedScrollTop, left: 0, behavior: "instant" });
+      }));
     });
 
     document.getElementById("btn-remove").addEventListener("click", async () => {
@@ -739,6 +775,8 @@
       const btn = document.getElementById("btn-remove");
       btn.disabled = true;
       try {
+        // 删除的书已不存在，focusBookId 置空，用 savedWindowScrollY 兜底恢复滚动位置
+        focusBookId = null;
         const res = await fetch(`/api/books/${currentBookId}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "移除失败");
@@ -756,6 +794,8 @@
       const url = sourceUrl.value.trim();
       if (!url) { showError("请输入书籍链接"); return; }
       showError("");
+      const modalEl = document.querySelector("#overlay .modal");
+      const savedScrollTop = modalEl?.scrollTop ?? 0;
       const btn = document.getElementById("btn-verify");
       btn.disabled = true;
       try {
@@ -783,12 +823,21 @@
         preview.classList.remove("open");
       } finally {
         btn.disabled = false;
+        // 预览显示/隐藏都可能让 modal 高度变化 → 恢复之前的 scrollTop
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          if (modalEl) modalEl.scrollTo({ top: savedScrollTop, left: 0, behavior: "instant" });
+        }));
       }
     });
 
     document.getElementById("btn-cancel-preview").addEventListener("click", () => {
+      const modalEl = document.querySelector("#overlay .modal");
+      const savedScrollTop = modalEl?.scrollTop ?? 0;
       preview.classList.remove("open");
       pendingMatch = null;
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (modalEl) modalEl.scrollTo({ top: savedScrollTop, left: 0, behavior: "instant" });
+      }));
     });
 
     document.getElementById("btn-confirm").addEventListener("click", async () => {
@@ -796,6 +845,8 @@
       const btn = document.getElementById("btn-confirm");
       btn.disabled = true;
       try {
+        // 保存要回到的那本书 id，loadReading 渲染完会 scrollIntoView 到它的位置
+        focusBookId = currentBookId;
         const res = await fetch(`/api/books/${currentBookId}/match-source`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
