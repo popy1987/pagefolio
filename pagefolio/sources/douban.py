@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import re
+import time
 
 import requests
 from bs4 import BeautifulSoup
 
-from pagefolio.config import DOUBAN_COOKIE, REQUEST_TIMEOUT, USER_AGENT
+from pagefolio.config import (
+    DOUBAN_COOKIE,
+    REQUEST_MAX_RETRIES,
+    REQUEST_RETRY_BASE_DELAY,
+    REQUEST_TIMEOUT,
+    USER_AGENT,
+)
 
 
 def _inject_douban_cookies(session: requests.Session) -> None:
@@ -41,6 +48,45 @@ session.headers.update(
 _inject_douban_cookies(session)
 
 
+def fetch_with_retry(
+    sess: requests.Session,
+    url: str,
+    *,
+    method: str = "GET",
+    timeout=REQUEST_TIMEOUT,
+    max_retries: int = REQUEST_MAX_RETRIES,
+    base_delay: float = REQUEST_RETRY_BASE_DELAY,
+    accept_status=(200,),
+    headers: dict | None = None,
+    **kwargs,
+) -> requests.Response | None:
+    """与 covers.fetch_with_retry 语义一致的封装：二元 timeout + 指数退避。
+
+    - 只对 Timeout / ConnectionError / ChunkedEncodingError / 5xx 重试
+    - 4xx 立即原样返回（403 表示 cookies 失效，404 表示链接错误，重试无意义）
+    - 所有重试耗尽后返回 None 或最后一次 5xx 响应，不把网络异常向上抛
+    """
+    last_resp: requests.Response | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = sess.request(method, url, timeout=timeout, headers=headers, **kwargs)
+            if resp.status_code in accept_status:
+                return resp
+            if 500 <= resp.status_code < 600:
+                last_resp = resp
+            else:
+                return resp  # 4xx 直接给上层看 status_code
+        except (requests.Timeout, requests.ConnectionError, requests.ChunkedEncodingError):
+            # 瞬时网络异常：等下一循环重试
+            pass
+        except requests.RequestException:
+            # TooManyRedirects 等确定性异常：立即放弃
+            return None
+        if attempt < max_retries - 1:
+            time.sleep(base_delay * (2 ** attempt))
+    return last_resp
+
+
 def extract_subject_id(url: str) -> str | None:
     match = re.search(r"book\.douban\.com/subject/(\d+)", url.strip())
     return match.group(1) if match else None
@@ -61,7 +107,16 @@ def _info_value(info_text: str, label: str) -> str | None:
 
 def fetch_subject(url: str) -> dict:
     page_url = normalize_douban_url(url)
-    resp = session.get(page_url, timeout=REQUEST_TIMEOUT, headers={"Referer": page_url})
+    try:
+        resp = fetch_with_retry(
+            session,
+            page_url,
+            headers={"Referer": page_url},
+        )
+    except requests.RequestException as exc:
+        raise ValueError(f"访问豆瓣页面失败：{exc}") from exc
+    if resp is None:
+        raise ValueError("无法访问豆瓣页面（网络超时或连接失败，已重试数次）")
     if resp.status_code != 200:
         raise ValueError(f"无法访问豆瓣页面（HTTP {resp.status_code}）")
 

@@ -775,14 +775,30 @@
       const btn = document.getElementById("btn-remove");
       btn.disabled = true;
       try {
-        // 删除的书已不存在，focusBookId 置空，用 savedWindowScrollY 兜底恢复滚动位置
+        // openBook 时已保存 savedWindowScrollY。移除后目标卡片不存在，
+        // 所以不设置 focusBookId，直接依赖 savedWindowScrollY 恢复到
+        // 「点击前打开的这本书」对应的纵向位置（视觉上保持在原视野）。
         focusBookId = null;
+        const removeYear = currentYear;
         const res = await fetch(`/api/books/${currentBookId}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "移除失败");
         closeModal();
+        // 先尝试原地刷新（若该月还有剩余书，则滚动位置不变）；
+        // loadYears 可能把 currentYear 重置（比如某年删到空了），
+        // 这里显式保留 removeYear 作为首选，找不到再走 loadYears 默认。
+        const hadYear = (typeof removeYear === "number" && Number.isFinite(removeYear));
+        if (hadYear) {
+          await loadReading(removeYear);
+        }
+        // 如果 loadReading 发现该年已空，currentYear 仍被设为该年；
+        // 保险起见再调用一次 loadYears：若该年还有其它书 → 无副作用；
+        // 若被删空 → loadYears 会回到存在数据的最近一年 + 触发 loadReading，
+        // 而 savedWindowScrollY 在 openBook 时就已记下，会用于滚动兜底。
         await loadYears();
-        if (currentYear) await loadReading(currentYear);
+        // loadYears 可能在有数据的情况下又触发了一次 loadReading，
+        // 而那次 loadReading 会把 savedWindowScrollY 作为兜底恢复，
+        // 所以 savedWindowScrollY 不能被提前清零，这里也不再重置。
       } catch (err) {
         showError(err.message);
       } finally {

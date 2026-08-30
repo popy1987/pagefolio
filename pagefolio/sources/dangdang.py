@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import re
+import time
 
 import requests
 from bs4 import BeautifulSoup
 
-from pagefolio.config import REQUEST_TIMEOUT, USER_AGENT
+from pagefolio.config import (
+    REQUEST_MAX_RETRIES,
+    REQUEST_RETRY_BASE_DELAY,
+    REQUEST_TIMEOUT,
+    USER_AGENT,
+)
 
 session = requests.Session()
 session.headers.update(
@@ -19,6 +25,38 @@ session.headers.update(
 )
 
 _PRODUCT_ID_RE = re.compile(r"product\.dangdang\.com/(\d+)\.html", re.I)
+
+
+def fetch_with_retry(
+    sess: requests.Session,
+    url: str,
+    *,
+    method: str = "GET",
+    timeout=REQUEST_TIMEOUT,
+    max_retries: int = REQUEST_MAX_RETRIES,
+    base_delay: float = REQUEST_RETRY_BASE_DELAY,
+    accept_status=(200,),
+    headers: dict | None = None,
+    **kwargs,
+) -> requests.Response | None:
+    """与 covers.fetch_with_retry 语义一致的封装：二元 timeout + 指数退避。"""
+    last_resp: requests.Response | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = sess.request(method, url, timeout=timeout, headers=headers, **kwargs)
+            if resp.status_code in accept_status:
+                return resp
+            if 500 <= resp.status_code < 600:
+                last_resp = resp
+            else:
+                return resp
+        except (requests.Timeout, requests.ConnectionError, requests.ChunkedEncodingError):
+            pass
+        except requests.RequestException:
+            return None
+        if attempt < max_retries - 1:
+            time.sleep(base_delay * (2 ** attempt))
+    return last_resp
 
 
 def extract_product_id(url: str) -> str | None:
@@ -173,11 +211,16 @@ def _clean_h1_title(h1_text: str, author: str | None, publisher: str | None) -> 
 
 def fetch_product(url: str) -> dict:
     page_url = normalize_dangdang_url(url)
-    resp = session.get(
-        page_url,
-        timeout=REQUEST_TIMEOUT,
-        headers={"Referer": "https://search.dangdang.com/"},
-    )
+    try:
+        resp = fetch_with_retry(
+            session,
+            page_url,
+            headers={"Referer": "https://search.dangdang.com/"},
+        )
+    except requests.RequestException as exc:
+        raise ValueError(f"访问当当商品页失败：{exc}") from exc
+    if resp is None:
+        raise ValueError("无法访问当当商品页（网络超时或连接失败，已重试数次）")
     if resp.status_code != 200:
         raise ValueError(f"无法访问当当商品页（HTTP {resp.status_code}）")
 

@@ -15,6 +15,8 @@ from pagefolio.config import (
     COVER_DIR,
     DB_PATH,
     DOUBAN_COOKIE,
+    REQUEST_MAX_RETRIES,
+    REQUEST_RETRY_BASE_DELAY,
     REQUEST_TIMEOUT,
     SCRAPE_DELAY_SEC,
     USER_AGENT,
@@ -48,6 +50,55 @@ session.headers.update(
 _inject_douban_cookies(session)
 
 
+# 可重试 HTTP 请求封装：
+#   - timeout 二元组 (connect, read)，区分连接/读取阶段
+#   - 只对 Timeout / ConnectionError / 5xx 状态码重试（403、404 等立即返回，避免浪费）
+#   - 指数退避 delay = REQUEST_RETRY_BASE_DELAY * (2 ** attempt)
+#   - 上层调用 try/except 可以直接捕获，不新增异常类型；无响应时返回 None 由上层处理
+def fetch_with_retry(
+    sess: requests.Session,
+    url: str,
+    *,
+    method: str = "GET",
+    timeout=REQUEST_TIMEOUT,
+    max_retries: int = REQUEST_MAX_RETRIES,
+    base_delay: float = REQUEST_RETRY_BASE_DELAY,
+    accept_status=(200,),
+    headers: dict | None = None,
+    **kwargs,
+) -> requests.Response | None:
+    last_exc: BaseException | None = None
+    last_resp: requests.Response | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = sess.request(
+                method,
+                url,
+                timeout=timeout,
+                headers=headers,
+                **kwargs,
+            )
+            if resp.status_code in accept_status:
+                return resp
+            # 非 2xx：5xx 类可以重试；4xx 立即放弃（403/404 重试也没用）
+            if 500 <= resp.status_code < 600:
+                last_resp = resp
+            else:
+                return resp  # 4xx 原样返回，让上层按 status_code 判断
+        except (requests.Timeout, requests.ConnectionError, requests.ChunkedEncodingError) as exc:
+            last_exc = exc
+        except requests.RequestException as exc:
+            # 其他 requests 异常（如 TooManyRedirects）立即放弃，不重试
+            raise exc
+        # 走到这里：需要重试 → 指数退避
+        if attempt < max_retries - 1:
+            delay = base_delay * (2 ** attempt)
+            time.sleep(delay)
+    # 所有尝试都失败：不把 Read timed out / ConnectionError 冒泡到上层，
+    # 统一返回 None，让调用方 continue 回退到下一个源
+    return last_resp  # 可能是最后一次 5xx，也可能是 None
+
+
 def cover_filename(book_id: int) -> str:
     return f"{book_id:04d}.jpg"
 
@@ -74,13 +125,19 @@ def download_image(url: str, dest) -> bool:
         headers["Referer"] = "https://book.douban.com/"
     if "ddimg.cn" in url or "dangdang.com" in url:
         headers["Referer"] = "https://www.dangdang.com/"
-    resp = session.get(url, timeout=REQUEST_TIMEOUT, stream=True, headers=headers)
-    if resp.status_code != 200:
+    try:
+        resp = fetch_with_retry(session, url, stream=True, headers=headers)
+    except requests.RequestException:
+        return False
+    if resp is None or resp.status_code != 200:
         return False
     ctype = (resp.headers.get("Content-Type") or "").lower()
     if "image" not in ctype and not url.lower().endswith((".jpg", ".jpeg", ".png", ".webp")):
         return False
-    data = resp.content
+    try:
+        data = resp.content
+    except requests.RequestException:
+        return False
     if len(data) < 1024:
         return False
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -106,12 +163,12 @@ def _cover_from_douban(book: sqlite3.Row) -> str | None:
         sleep()
         url = "https://book.douban.com/j/subject_suggest?q=" + urllib.parse.quote(q)
         try:
-            resp = session.get(
+            resp = fetch_with_retry(
+                session,
                 url,
-                timeout=REQUEST_TIMEOUT,
                 headers={"Referer": "https://book.douban.com/", "Accept": "application/json"},
             )
-            if resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 continue
             items = resp.json()
         except (requests.RequestException, ValueError):
@@ -130,12 +187,12 @@ def _cover_from_dangdang(book: sqlite3.Row) -> str | None:
         sleep()
         url = "https://search.dangdang.com/?key=" + urllib.parse.quote(q) + "&act=input"
         try:
-            resp = session.get(
+            resp = fetch_with_retry(
+                session,
                 url,
-                timeout=REQUEST_TIMEOUT,
                 headers={"Referer": "https://www.dangdang.com/"},
             )
-            if resp.status_code != 200:
+            if resp is None or resp.status_code != 200:
                 continue
             soup = BeautifulSoup(resp.text, "lxml")
             ul = soup.select_one("ul.bigimg")
@@ -166,10 +223,10 @@ def _cover_from_goodreads(book: sqlite3.Row) -> str | None:
     sleep()
     url = "https://www.goodreads.com/search?q=" + urllib.parse.quote(_search_query(book))
     try:
-        resp = session.get(url, timeout=REQUEST_TIMEOUT)
+        resp = fetch_with_retry(session, url)
     except requests.RequestException:
         return None
-    if resp.status_code != 200:
+    if resp is None or resp.status_code != 200:
         return None
     soup = BeautifulSoup(resp.text, "lxml")
     img = soup.select_one("table.tableList img.bookCover") or soup.select_one("img.bookCover")

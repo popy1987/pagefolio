@@ -16,7 +16,17 @@ USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/122.0.0.0 Safari/537.36"
 )
-REQUEST_TIMEOUT = 20
+# 请求超时采用 (connect_timeout, read_timeout) 二元组：
+#   connect_timeout  TCP 建立连接阶段超时（8s 足够，避免卡在 SYN 重试）
+#   read_timeout     首字节 / 响应体读取超时（30s 比原来 20s 更抗抖，但仍有限）
+REQUEST_TIMEOUT_CONNECT = 8
+REQUEST_TIMEOUT_READ = 30
+REQUEST_TIMEOUT = (REQUEST_TIMEOUT_CONNECT, REQUEST_TIMEOUT_READ)
+# 指数退避重试：仅对网络层异常（Timeout / ConnectionError / 5xx）生效
+#   重试次数     3 次（首次 + 2 次重试，总尝试 = 3）
+#   基础延时     1.5s，延时序列 1.5s → 3.0s → 6.0s（在豆瓣限速时避免快速重试被封禁）
+REQUEST_MAX_RETRIES = 3
+REQUEST_RETRY_BASE_DELAY = 1.5
 SCRAPE_DELAY_SEC = 1.2
 
 # Optional: paste your logged-in Douban cookies here (or export env var before
