@@ -6,6 +6,7 @@ import re
 import time
 
 import requests
+from requests.exceptions import ChunkedEncodingError as _ChunkedEncodingError
 from bs4 import BeautifulSoup
 
 from pagefolio.config import (
@@ -76,7 +77,7 @@ def fetch_with_retry(
                 last_resp = resp
             else:
                 return resp  # 4xx 直接给上层看 status_code
-        except (requests.Timeout, requests.ConnectionError, requests.ChunkedEncodingError):
+        except (requests.Timeout, requests.ConnectionError, _ChunkedEncodingError):
             # 瞬时网络异常：等下一循环重试
             pass
         except requests.RequestException:

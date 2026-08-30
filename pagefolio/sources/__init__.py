@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import re
+import time
 
 import requests
+from requests.exceptions import ChunkedEncodingError as _ChunkedEncodingError
 from bs4 import BeautifulSoup
 
-from pagefolio.config import REQUEST_TIMEOUT, USER_AGENT
+from pagefolio.config import (
+    REQUEST_MAX_RETRIES,
+    REQUEST_RETRY_BASE_DELAY,
+    REQUEST_TIMEOUT,
+    USER_AGENT,
+)
 from pagefolio.sources.dangdang import fetch_product as fetch_dangdang
 from pagefolio.sources.douban import fetch_subject as fetch_douban
 
@@ -26,6 +33,43 @@ SOURCE_LABELS = {
     "goodreads": "Goodreads",
     "amazon": "Amazon",
 }
+
+
+def fetch_with_retry(
+    sess: requests.Session,
+    url: str,
+    *,
+    method: str = "GET",
+    timeout=REQUEST_TIMEOUT,
+    max_retries: int = REQUEST_MAX_RETRIES,
+    base_delay: float = REQUEST_RETRY_BASE_DELAY,
+    accept_status=(200,),
+    headers: dict | None = None,
+    **kwargs,
+) -> requests.Response | None:
+    """与 covers.fetch_with_retry 语义一致：二元 timeout + 指数退避。
+
+    - 只对 Timeout / ConnectionError / ChunkedEncodingError / 5xx 重试
+    - 4xx 原样返回（不浪费请求）；所有重试耗尽后返回 None / 最后一次 5xx
+    - 不向调用方抛出网络异常，异常统一返回 None，由上层转成友好 ValueError
+    """
+    last_resp: requests.Response | None = None
+    for attempt in range(max_retries):
+        try:
+            resp = sess.request(method, url, timeout=timeout, headers=headers, **kwargs)
+            if resp.status_code in accept_status:
+                return resp
+            if 500 <= resp.status_code < 600:
+                last_resp = resp
+            else:
+                return resp
+        except (requests.Timeout, requests.ConnectionError, _ChunkedEncodingError):
+            pass
+        except requests.RequestException:
+            return None
+        if attempt < max_retries - 1:
+            time.sleep(base_delay * (2 ** attempt))
+    return last_resp
 
 
 def detect_source(url: str) -> str:
@@ -95,7 +139,16 @@ def fetch_from_url(url: str) -> dict:
 
 
 def _fetch_page(url: str, referer: str | None = None) -> BeautifulSoup:
-    resp = session.get(url, timeout=REQUEST_TIMEOUT, headers={"Referer": referer or url})
+    try:
+        resp = fetch_with_retry(
+            session,
+            url,
+            headers={"Referer": referer or url},
+        )
+    except requests.RequestException as exc:
+        raise ValueError(f"访问页面失败：{exc}") from exc
+    if resp is None:
+        raise ValueError("无法访问页面（网络超时或连接失败，已重试数次）")
     if resp.status_code != 200:
         raise ValueError(f"无法访问页面（HTTP {resp.status_code}）")
     return BeautifulSoup(resp.text, "lxml")

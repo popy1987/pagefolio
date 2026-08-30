@@ -9,6 +9,8 @@ from pagefolio.covers import download_cover_for_book
 from pagefolio.db import book_to_dict, connect
 from pagefolio.sources import fetch_from_url
 
+import requests  # noqa: E402  用于把网络层 RequestException 转成前端友好消息
+
 
 def create_app() -> Flask:
     index_path = WEB_DIR / "index.html"
@@ -175,7 +177,12 @@ def create_app() -> Flask:
     def _apply_match(book_id: int, info: dict) -> dict:
         local_path = None
         if info.get("cover_url"):
-            local_path = download_cover_for_book(info["cover_url"], book_id)
+            try:
+                local_path = download_cover_for_book(info["cover_url"], book_id)
+            except (ValueError, requests.RequestException):
+                # 封面下载失败（超时/坏图）不应该打断整本书的匹配，
+                # local_path 保持 None，books.local_cover_path 会走 COALESCE 不变
+                local_path = None
         with connect() as conn:
             conn.execute(
                 """
@@ -216,6 +223,10 @@ def create_app() -> Flask:
             return jsonify(fetch_from_url(url))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        except requests.RequestException as exc:
+            # fetch_from_url 内部虽然已转 ValueError，但作为兜底再抓一次，
+            # 保证即使第三方 fetch_* 漏包也不会把 Read timed out(20) 原样冒到 UI
+            return jsonify({"error": f"访问源站失败，已自动重试数次：{exc}"}), 502
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": f"抓取失败：{exc}"}), 502
 
@@ -231,6 +242,8 @@ def create_app() -> Flask:
             return jsonify({"ok": True, "book": book})
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        except requests.RequestException as exc:
+            return jsonify({"error": f"访问源站失败，已自动重试数次：{exc}"}), 502
         except Exception as exc:  # noqa: BLE001
             return jsonify({"error": f"更新失败：{exc}"}), 502
 

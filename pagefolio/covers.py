@@ -9,6 +9,7 @@ import time
 import urllib.parse
 
 import requests
+from requests.exceptions import ChunkedEncodingError as _ChunkedEncodingError
 from bs4 import BeautifulSoup
 
 from pagefolio.config import (
@@ -85,7 +86,7 @@ def fetch_with_retry(
                 last_resp = resp
             else:
                 return resp  # 4xx 原样返回，让上层按 status_code 判断
-        except (requests.Timeout, requests.ConnectionError, requests.ChunkedEncodingError) as exc:
+        except (requests.Timeout, requests.ConnectionError, _ChunkedEncodingError) as exc:
             last_exc = exc
         except requests.RequestException as exc:
             # 其他 requests 异常（如 TooManyRedirects）立即放弃，不重试
