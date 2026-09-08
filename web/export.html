@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>阅读年度海报 · Pagefolio</title>
+  <script src="/assets/html2canvas.min.js"></script>
+  <style>
+    :root {
+      --page-bg: #0d0f14;
+      --toolbar-bg: #14161c;
+      --poster-bg: #1c202a;
+      --panel-bg: #252b38;
+      --ink: #e8e2d5;
+      --dim: #8a93a6;
+      --gold: #c9a86a;
+      --line: rgba(232, 226, 213, 0.25);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--page-bg);
+      color: var(--ink);
+      font-family: "Songti SC", "STSong", "Noto Serif SC", "SimSun", serif;
+    }
+
+    /* ===== 工具栏（不参与导出）===== */
+    .toolbar {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 22px;
+      background: var(--toolbar-bg);
+      border-bottom: 1px solid #262b36;
+    }
+    .toolbar .year-badge {
+      font-size: 15px; letter-spacing: 2px; color: var(--gold);
+      margin-right: 4px;
+    }
+    .toolbar label { font-size: 13px; color: var(--dim); }
+    .toolbar select, .toolbar button {
+      font-family: inherit; font-size: 14px;
+      border-radius: 6px; cursor: pointer;
+    }
+    .toolbar select {
+      padding: 7px 10px;
+      background: var(--panel-bg); color: var(--ink);
+      border: 1px solid #3a4254; outline: none;
+    }
+    .toolbar button.primary {
+      padding: 8px 18px;
+      background: var(--gold); color: #1c202a;
+      border: none; font-weight: 700; letter-spacing: 1px;
+    }
+    .toolbar button.primary:disabled { opacity: 0.6; cursor: default; }
+    .toolbar .hint { font-size: 12px; color: var(--dim); }
+    #status { font-size: 13px; color: #d98f8f; }
+
+    /* ===== 海报画布 ===== */
+    #poster {
+      width: 920px;
+      margin: 36px auto 60px;
+      padding: 64px 56px 48px;
+      background:
+        radial-gradient(1200px 500px at 50% -80px, rgba(201, 168, 106, 0.08), transparent 60%),
+        var(--poster-bg);
+      border: 1px solid #2c3242;
+    }
+
+    .poster-head { text-align: center; }
+    .kicker {
+      font-size: 12px; letter-spacing: 8px; text-indent: 8px;
+      color: var(--dim);
+    }
+    .year-title {
+      margin: 10px 0 6px;
+      font-size: 96px; font-weight: 700; line-height: 1;
+      color: var(--gold);
+    }
+    .stat-line {
+      font-size: 15px; letter-spacing: 3px;
+      color: var(--ink); opacity: 0.85;
+    }
+
+    .month-section { margin-top: 30px; }
+    .month-section + .month-section {
+      border-top: 1px dashed var(--line);
+      padding-top: 30px;
+    }
+    .head-rule {
+      border: none; margin: 40px 0 0;
+      border-top: 1px dashed var(--line);
+    }
+
+    .month-row { display: flex; gap: 16px; align-items: flex-start; }
+    .month-covers { display: flex; flex-wrap: wrap; gap: 12px; }
+
+    /* 月份 Logo：与封面同高的图卡（内容宽 808 = 108 + 16 + 104*6 + 12*5） */
+    .month-card {
+      width: 108px; height: 146px; flex: none;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 7px;
+      background: linear-gradient(165deg, #2c3140 0%, #222734 55%, #282e3d 100%);
+      border: 1px solid rgba(201, 168, 106, 0.5);
+    }
+    .month-card .zh {
+      font-size: 26px; color: var(--gold);
+      letter-spacing: 3px; text-indent: 3px; font-weight: 700;
+    }
+    .month-card .en {
+      font-size: 10px; letter-spacing: 2px; text-indent: 2px;
+      color: var(--dim);
+    }
+    .month-card .count {
+      font-size: 11px; color: var(--ink); opacity: 0.75;
+    }
+
+    .cover-item {
+      width: 104px; height: 146px;
+      object-fit: cover; display: block;
+      background: #222734;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .empty-month {
+      padding-top: 62px;
+      font-size: 12px; letter-spacing: 2px; color: var(--dim);
+    }
+
+    .poster-foot {
+      margin-top: 44px; text-align: center;
+      font-size: 12px; letter-spacing: 4px; color: var(--dim);
+    }
+
+    /* 未上线样式的占位 */
+    .placeholder {
+      min-height: 420px;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 14px;
+    }
+    .placeholder .ph-title {
+      font-size: 40px; color: var(--gold); letter-spacing: 6px; text-indent: 6px;
+    }
+    .placeholder .ph-sub { font-size: 14px; letter-spacing: 3px; color: var(--dim); }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <span class="year-badge" id="year-badge">—</span>
+    <label for="style-select">样式</label>
+    <select id="style-select">
+      <option value="classic" selected>经典样式</option>
+      <option value="monthly">单月详细</option>
+      <option value="grid">平铺</option>
+    </select>
+    <button type="button" class="primary" id="btn-export-png">导出成png</button>
+    <span class="hint">导出仅包含下方海报区域</span>
+    <span id="status"></span>
+  </div>
+
+  <div id="poster"></div>
+
+  <script>
+    const STYLE_LABELS = { classic: "经典样式", monthly: "单月详细", grid: "平铺" };
+    const MONTHS_ZH = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
+    const MONTHS_EN = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+
+    const poster = document.getElementById("poster");
+    const statusEl = document.getElementById("status");
+    const yearBadge = document.getElementById("year-badge");
+    const styleSelect = document.getElementById("style-select");
+    const btnExport = document.getElementById("btn-export-png");
+
+    const params = new URLSearchParams(location.search);
+    const year = Number(params.get("year")) || new Date().getFullYear();
+    let months = {};   // {month: [book, ...]}
+    let total = 0;
+
+    function coverSrc(book) {
+      return book.local_cover_path ? "/" + book.local_cover_path : "/assets/no-cover.svg";
+    }
+
+    function esc(s) {
+      const d = document.createElement("div");
+      d.textContent = s ?? "";
+      return d.innerHTML;
+    }
+
+    function render() {
+      const style = styleSelect.value;
+      if (style === "classic") renderClassic();
+      else renderPlaceholder(STYLE_LABELS[style]);
+    }
+
+    // ===== 经典样式：深色典雅底 · 年度标题 · 虚线分月 · 月份Logo卡 + 封面横向排列 =====
+    function renderClassic() {
+      let html = `
+        <div class="poster-head">
+          <div class="kicker">PAGEFOLIO · ANNUAL READING</div>
+          <h1 class="year-title">${year}</h1>
+          <div class="stat-line">共 ${total} 本 · 十二个月</div>
+        </div>
+        <hr class="head-rule">`;
+      for (let m = 1; m <= 12; m++) {
+        const books = months[m] || [];
+        html += `
+          <section class="month-section">
+            <div class="month-row">
+              <div class="month-card">
+                <div class="zh">${MONTHS_ZH[m - 1]}</div>
+                <div class="en">${MONTHS_EN[m - 1]}</div>
+                <div class="count">${books.length} 本</div>
+              </div>
+              <div class="month-covers">`
+          + (books.length
+              ? books.map(b => `<img class="cover-item" src="${coverSrc(b)}" alt="${esc(b.title)}">`).join("")
+              : `<div class="empty-month">— 本月无阅读 —</div>`)
+          + `
+              </div>
+            </div>
+          </section>`;
+      }
+      html += `<div class="poster-foot">— PAGEFOLIO · ${year} 年度阅读 —</div>`;
+      poster.innerHTML = html;
+    }
+
+    function renderPlaceholder(label) {
+      poster.innerHTML = `
+        <div class="placeholder">
+          <div class="ph-title">${label}</div>
+          <div class="ph-sub">该样式即将上线，敬请期待</div>
+        </div>`;
+    }
+
+    // ===== 导出 PNG =====
+    btnExport.addEventListener("click", async () => {
+      statusEl.textContent = "";
+      const label = STYLE_LABELS[styleSelect.value];
+      btnExport.disabled = true;
+      const originalText = btnExport.textContent;
+      btnExport.textContent = "正在生成…";
+      try {
+        const canvas = await html2canvas(poster, {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: getComputedStyle(poster).backgroundColor,
+        });
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Pagefolio-${year}-${label}.png`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+      } catch (err) {
+        statusEl.textContent = "导出失败：" + err.message;
+      } finally {
+        btnExport.disabled = false;
+        btnExport.textContent = originalText;
+      }
+    });
+
+    styleSelect.addEventListener("change", render);
+
+    // ===== 加载当年数据 =====
+    (async () => {
+      yearBadge.textContent = `${year} 年`;
+      try {
+        const data = await fetch(`/api/reading?year=${year}`).then(r => r.json());
+        if (data.error) throw new Error(data.error);
+        months = data.months || {};
+        total = Object.values(months).reduce((n, list) => n + list.length, 0);
+        yearBadge.textContent = `${year} 年 · 共 ${total} 本`;
+        render();
+      } catch (err) {
+        statusEl.textContent = "数据加载失败：" + err.message;
+        poster.innerHTML = "";
+      }
+    })();
+  </script>
+</body>
+</html>

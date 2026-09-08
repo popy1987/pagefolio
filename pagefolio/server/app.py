@@ -31,6 +31,10 @@ def create_app() -> Flask:
     def asset_file(filename: str) -> object:
         return send_from_directory(str(WEB_DIR / "assets"), filename)
 
+    @app.get("/export.html")
+    def export_page() -> object:
+        return send_file(WEB_DIR / "export.html")
+
     @app.get("/api/years")
     def api_years() -> object:
         with connect() as conn:

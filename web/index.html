@@ -408,6 +408,7 @@
         <p class="subtitle">年度阅读书目</p>
       </div>
       <div class="header-actions">
+        <button type="button" class="ghost" id="btn-export">导出</button>
         <button type="button" class="primary" id="btn-add-book">添加书目</button>
         <div class="year-select">
           <label for="year">年份</label>
@@ -796,6 +797,12 @@
     });
 
     yearSelect.addEventListener("change", () => loadReading(Number(yearSelect.value)));
+
+    // 导出年度阅读海报：新窗口打开导出页，由导出页自行拉取该年数据
+    document.getElementById("btn-export").addEventListener("click", () => {
+      if (!currentYear) return;
+      window.open(`/export.html?year=${currentYear}`, "_blank");
+    });
     document.getElementById("modal-close").addEventListener("click", closeModal);
     overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
 
