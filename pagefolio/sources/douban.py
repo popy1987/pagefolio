@@ -106,6 +106,53 @@ def _info_value(info_text: str, label: str) -> str | None:
     return match.group(1).strip() if match else None
 
 
+def _norm_person_name(s: str) -> str:
+    """人名规范化：去掉国别标记后的空格，如 '[美] 沃尔夫' → '[美]沃尔夫'。"""
+    return re.sub(r"(\[[^\]]+\])\s+", r"\1", s or "").strip()
+
+
+def _info_fields(info) -> dict[str, str]:
+    """按 <span class='pl'>标签</span> 结构化提取豆瓣 #info 字段。
+
+    豆瓣页面每行形如：
+        <span class="pl">作者</span>: <a>甲</a> / <a>乙</a><br>
+        <span class="pl">出版社:</span> 商务印书馆<br>
+    「作者/译者」的冒号在 span 外侧，get_text 后标签与冒号间夹换行，
+    "译者:" 类正则会失效；这里改为定位 span.pl 后顺序收集到 <br> 前的
+    文本/链接节点，作者行与译者行天然分开，不会再把译者混进作者。
+    """
+    fields: dict[str, str] = {}
+    if info is None:
+        return fields
+    for pl in info.select("span.pl"):
+        label = pl.get_text(strip=True).rstrip(":：").strip()
+        if not label or label in fields:
+            continue
+        # 先收集 <br> 前的纯文本节点与链接节点
+        text_parts: list[str] = []
+        anchors = []
+        node = pl.next_sibling
+        while node is not None and getattr(node, "name", None) != "br":
+            if isinstance(node, str):
+                text = str(node).strip(" /:\n\t\r")
+                if text:
+                    text_parts.append(_norm_person_name(text))
+            elif getattr(node, "name", None) == "a":
+                anchors.append(node)
+            node = node.next_sibling
+        # 同一作者在豆瓣上常有 /author/ 正式链接 + /search 备用链接两个入口，
+        # 优先只取 /author/ 链接，避免同一人出现两次；没有时才退回全部链接
+        if anchors:
+            official = [a for a in anchors if "/author/" in (a.get("href") or "")]
+            chosen = official or anchors
+            parts = [_norm_person_name(a.get_text(strip=True)) for a in chosen if a.get_text(strip=True)]
+        else:
+            parts = text_parts
+        if parts:
+            fields[label] = "、".join(dict.fromkeys(parts))
+    return fields
+
+
 def fetch_subject(url: str) -> dict:
     page_url = normalize_douban_url(url)
     try:
@@ -148,12 +195,21 @@ def fetch_subject(url: str) -> dict:
         if cover_url:
             cover_url = cover_url.replace("/s/", "/l/")
 
-    author_els = soup.select("#info a[href*='/author/'], #info a[href*='/search/'][href*='author']")
-    author = "、".join(dict.fromkeys(el.get_text(strip=True) for el in author_els)) or None
-
+    # #info 结构化字段：作者行/译者行分开提取，避免译者混入作者
     info = soup.select_one("#info")
     info_text = info.get_text("\n", strip=True) if info else ""
-    translator = _info_value(info_text, "译者")
+    fields = _info_fields(info)
+
+    author = fields.get("作者")
+    if not author:
+        # 旧页面变体兜底：作者链接选择器（此时无法区分著/译，仅作 fallback）
+        author_els = soup.select("#info a[href*='/author/'], #info a[href*='/search/'][href*='author']")
+        author = "、".join(
+            dict.fromkeys(_norm_person_name(el.get_text(strip=True)) for el in author_els)
+        ) or None
+    translator = fields.get("译者")
+    if subtitle is None:
+        subtitle = fields.get("副标题")
 
     return {
         "douban_id": extract_subject_id(page_url),
@@ -162,7 +218,7 @@ def fetch_subject(url: str) -> dict:
         "subtitle": subtitle,
         "author": author,
         "translator": translator,
-        "isbn": _info_value(info_text, "ISBN"),
-        "publisher": _info_value(info_text, "出版社"),
+        "isbn": fields.get("ISBN") or _info_value(info_text, "ISBN"),
+        "publisher": fields.get("出版社") or _info_value(info_text, "出版社"),
         "cover_url": cover_url,
     }
