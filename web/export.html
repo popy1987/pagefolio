@@ -51,6 +51,12 @@
       background: var(--gold); color: #1c202a;
       border: none; font-weight: 700; letter-spacing: 1px;
     }
+    .toolbar button.ghost {
+      padding: 8px 16px;
+      background: transparent; color: var(--ink);
+      border: 1px solid #3a4254; letter-spacing: 1px;
+    }
+    .toolbar button:hover.ghost { border-color: var(--gold); color: var(--gold); }
     .toolbar button.primary:disabled { opacity: 0.6; cursor: default; }
     .toolbar .hint { font-size: 12px; color: var(--dim); }
     #status { font-size: 13px; color: #d98f8f; }
@@ -152,6 +158,7 @@
       <option value="grid">平铺</option>
     </select>
     <button type="button" class="primary" id="btn-export-png">导出成png</button>
+    <button type="button" class="ghost" id="btn-export-txt">导出文本</button>
     <span class="hint">导出仅包含下方海报区域</span>
     <span id="status"></span>
   </div>
@@ -259,6 +266,38 @@
     });
 
     styleSelect.addEventListener("change", render);
+
+    // ===== 导出文本：《标题：副标题》作者，译者 译（每月重新编号，空月跳过）=====
+    function buildReadingText() {
+      const lines = [];
+      const NL = "\n";
+      for (let m = 1; m <= 12; m++) {
+        const books = months[m] || [];
+        if (!books.length) continue;
+        lines.push("## " + MONTHS_ZH[m - 1], "");
+        books.forEach((b, i) => {
+          const title = b.subtitle ? b.title + "：" + b.subtitle : (b.title || "");
+          let line = (i + 1) + ". 《" + title + "》";
+          if (b.author) line += b.author;
+          if (b.translator) line += "，" + b.translator + " 译";
+          lines.push(line);
+        });
+        lines.push("");
+      }
+      return lines.join(NL);
+    }
+
+    document.getElementById("btn-export-txt").addEventListener("click", () => {
+      statusEl.textContent = "";
+      const text = buildReadingText();
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "Pagefolio-" + year + "-阅读清单.txt";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+    });
 
     // ===== 加载当年数据 =====
     (async () => {
