@@ -267,6 +267,47 @@ def create_app() -> Flask:
         url = ((request.get_json(silent=True) or {}).get("url") or "").strip()
         return _match_source(book_id, url)
 
+    @app.post("/api/books/<int:book_id>/move-reading")
+    def api_move_reading(book_id: int) -> object:
+        """把该书的阅读记录（reading_months）转移到新的年度/月份。
+
+        书目信息（books 表）完全不动，只改写原记录的 year/month；
+        finished_on 属于旧阅读日期，转移后一并清空。
+        """
+        payload = request.get_json(silent=True) or {}
+        try:
+            year = int(payload.get("year"))
+            month = int(payload.get("month"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "请选择有效的年度和月份"}), 400
+        if not (1900 <= year <= 2100):
+            return jsonify({"error": "年度需在 1900–2100 之间"}), 400
+        if not (1 <= month <= 12):
+            return jsonify({"error": "月份需在 1–12 之间"}), 400
+
+        with connect() as conn:
+            if not conn.execute("SELECT 1 FROM books WHERE id = ?", (book_id,)).fetchone():
+                return jsonify({"error": "书目不存在"}), 404
+            rows = conn.execute(
+                "SELECT id, year, month FROM reading_months "
+                "WHERE book_id = ? ORDER BY year, month",
+                (book_id,),
+            ).fetchall()
+            if not rows:
+                return jsonify({"error": "该书没有可转移的阅读记录"}), 404
+            if len(rows) > 1:
+                return jsonify({"error": "该书有多条阅读记录，暂不支持批量转移"}), 400
+            row = rows[0]
+            if row["year"] == year and row["month"] == month:
+                return jsonify({"error": "新的年月与当前阅读记录相同"}), 400
+            conn.execute(
+                "UPDATE reading_months SET year = ?, month = ?, finished_on = NULL "
+                "WHERE id = ?",
+                (year, month, row["id"]),
+            )
+            conn.commit()
+        return jsonify({"ok": True})
+
     return app
 
 

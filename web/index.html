@@ -432,6 +432,7 @@
       <ul class="detail-list" id="modal-details"></ul>
       <div class="btn-row">
         <button type="button" class="ghost" id="btn-match">匹配不正确</button>
+        <button type="button" class="ghost" id="btn-move">转入</button>
         <button type="button" class="danger" id="btn-remove">移除</button>
       </div>
       <div class="match-panel" id="match-panel">
@@ -502,6 +503,42 @@
     </div>
   </div>
 
+  <div class="overlay" id="move-overlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true">
+      <button class="modal-close" id="move-close" aria-label="关闭">×</button>
+      <h2 class="form-title">转移阅读记录</h2>
+      <p class="match-hint" style="margin: -12px 0 16px;">选择新的年度和月份：书目信息保留，仅阅读记录转移到新位置。</p>
+      <div class="form-row">
+        <div class="form-field">
+          <label for="move-year">年度</label>
+          <input type="number" id="move-year" min="1900" max="2100" required placeholder="2026">
+        </div>
+        <div class="form-field">
+          <label for="move-month">月份</label>
+          <select id="move-month" required>
+            <option value="1">一月</option>
+            <option value="2">二月</option>
+            <option value="3">三月</option>
+            <option value="4">四月</option>
+            <option value="5">五月</option>
+            <option value="6">六月</option>
+            <option value="7">七月</option>
+            <option value="8">八月</option>
+            <option value="9">九月</option>
+            <option value="10">十月</option>
+            <option value="11">十一月</option>
+            <option value="12">十二月</option>
+          </select>
+        </div>
+      </div>
+      <p class="error" id="move-error" hidden></p>
+      <div class="btn-row">
+        <button type="button" class="primary" id="move-confirm">确认转移</button>
+        <button type="button" class="ghost" id="move-cancel">取消</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const NO_COVER = "/assets/no-cover.svg";
     const MONTHS = ["一月","二月","三月","四月","五月","六月","七月","八月","九月","十月","十一月","十二月"];
@@ -516,8 +553,15 @@
     const addOverlay = document.getElementById("add-overlay");
     const addForm = document.getElementById("add-form");
     const addError = document.getElementById("add-error");
+    const moveOverlay = document.getElementById("move-overlay");
+    const moveError = document.getElementById("move-error");
+    const moveYearInput = document.getElementById("move-year");
+    const moveMonthSelect = document.getElementById("move-month");
 
     let currentBookId = null;
+    // 当前打开书目弹窗时这本书的阅读记录（year/month/finished_on），
+    // 供「转入」对话框预填当前年月
+    let currentBookReadings = [];
     let pendingMatch = null;
     let currentYear = null;
     // 操作某本书后 reload 阅读列表时，希望滚动到该书对应的 card
@@ -632,7 +676,8 @@
       document.getElementById("modal-subtitle").hidden = !book.subtitle;
       document.getElementById("modal-author").textContent = bookCreditLine(book);
 
-      const readings = (book.readings || [])
+      currentBookReadings = book.readings || [];
+      const readings = currentBookReadings
         .map(r => `${r.year} 年 ${r.month} 月${r.finished_on ? `（${r.finished_on}）` : ""}`)
         .join("；") || "—";
 
@@ -801,6 +846,78 @@
         // 所以 savedWindowScrollY 不能被提前清零，这里也不再重置。
       } catch (err) {
         showError(err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ===== 转入（转移阅读记录到新的年度/月份）=====
+    function showMoveError(msg) {
+      moveError.textContent = msg;
+      moveError.hidden = !msg;
+    }
+
+    function openMoveDialog() {
+      if (!currentBookId) return;
+      showMoveError("");
+      // 只有一条阅读记录时预填它当前的年月，方便只改需要改的部分
+      const rec = currentBookReadings.length === 1 ? currentBookReadings[0] : null;
+      if (rec) {
+        moveYearInput.value = rec.year;
+        moveMonthSelect.value = String(rec.month);
+      } else {
+        const now = new Date();
+        moveYearInput.value = now.getFullYear();
+        moveMonthSelect.value = String(now.getMonth() + 1);
+      }
+      moveOverlay.classList.add("open");
+      moveOverlay.setAttribute("aria-hidden", "false");
+    }
+
+    function closeMoveDialog() {
+      moveOverlay.classList.remove("open");
+      moveOverlay.setAttribute("aria-hidden", "true");
+      showMoveError("");
+    }
+
+    document.getElementById("btn-move").addEventListener("click", openMoveDialog);
+    document.getElementById("move-close").addEventListener("click", closeMoveDialog);
+    document.getElementById("move-cancel").addEventListener("click", closeMoveDialog);
+    moveOverlay.addEventListener("click", e => { if (e.target === moveOverlay) closeMoveDialog(); });
+
+    document.getElementById("move-confirm").addEventListener("click", async () => {
+      if (!currentBookId) return;
+      const year = Number(moveYearInput.value);
+      const month = Number(moveMonthSelect.value);
+      if (!year || year < 1900 || year > 2100) { showMoveError("请填写有效年度（1900–2100）"); return; }
+      if (!month || month < 1 || month > 12) { showMoveError("请选择月份"); return; }
+
+      const btn = document.getElementById("move-confirm");
+      btn.disabled = true;
+      try {
+        const res = await fetch(`/api/books/${currentBookId}/move-reading`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ year, month }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "转移失败");
+        closeMoveDialog();
+        closeModal();
+        // 转移后定位到书的新位置：focusBookId 让 loadReading 渲染完
+        // scrollIntoView 到该书的卡片（含高亮动画）
+        focusBookId = currentBookId;
+        const years = await fetch("/api/years").then(r => r.json());
+        if (years.length) {
+          yearSelect.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join("");
+          yearSelect.disabled = false;
+          // 优先切到转移后的目标年份；若该年意外为空则回退到最新年份
+          currentYear = years.includes(year) ? year : years[0];
+          yearSelect.value = currentYear;
+          await loadReading(currentYear);
+        }
+      } catch (err) {
+        showMoveError(err.message);
       } finally {
         btn.disabled = false;
       }
