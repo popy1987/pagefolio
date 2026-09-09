@@ -14,3 +14,6 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .DS_Store
+
+# 服务运行时文件
+.pagefolio.pid
