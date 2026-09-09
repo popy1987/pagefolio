@@ -565,6 +565,17 @@
     let currentBookReadings = [];
     let pendingMatch = null;
     let currentYear = null;
+    // 记住上次选中的年份，刷新页面后恢复（而不是每次回到最新年）
+    const YEAR_STORAGE_KEY = "pagefolio:selectedYear";
+    function saveSelectedYear(year) {
+      try { localStorage.setItem(YEAR_STORAGE_KEY, String(year)); } catch (_) {}
+    }
+    function loadSelectedYear() {
+      try {
+        const v = localStorage.getItem(YEAR_STORAGE_KEY);
+        return v === null ? null : Number(v);
+      } catch (_) { return null; }
+    }
     // 操作某本书后 reload 阅读列表时，希望滚动到该书对应的 card
     let focusBookId = null;
     // 记录之前的 window scrollY（兜底用，没找到 focus book 时回滚到这里）
@@ -608,7 +619,9 @@
         : `<option value="">暂无数据</option>`;
       yearSelect.disabled = !years.length;
       if (years.length) {
-        currentYear = years[0];
+        // 优先恢复上次选中的年份；若该年已无数据（如被删空）则回退最新年
+        const saved = loadSelectedYear();
+        currentYear = years.includes(saved) ? saved : years[0];
         yearSelect.value = currentYear;
         loadReading(currentYear);
       }
@@ -616,6 +629,7 @@
 
     async function loadReading(year) {
       currentYear = year;
+      saveSelectedYear(year);
       content.innerHTML = `<p class="empty">加载中…</p>`;
       const data = await fetch(`/api/reading?year=${year}`).then(r => r.json());
       const months = data.months || {};
