@@ -17,3 +17,6 @@ __pycache__/
 
 # 服务运行时文件
 .pagefolio.pid
+
+# 本地私密配置（豆瓣 Cookie 等），切勿提交
+pagefolio/douban_cookie.txt

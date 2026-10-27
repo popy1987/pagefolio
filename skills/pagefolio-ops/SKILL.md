@@ -16,7 +16,7 @@ description: Pagefolio 服务运维技能：重启后端、更新豆瓣 Cookie�
 | PID 文件 | `.pagefolio.pid` |
 | 日志 | `/tmp/pagefolio_serve.log` |
 | 健康检查 | `GET /api/years` 返回 200 |
-| Cookie 配置 | `pagefolio/config.py` 的 `DOUBAN_COOKIE` |
+| Cookie 文件 | `pagefolio/douban_cookie.txt`（本地、git 忽略，单行原始 Cookie） |
 
 ## 一、重启后端
 
@@ -63,7 +63,7 @@ sleep 3 && curl -s -o /dev/null -w "HTTP %{http_code}" http://127.0.0.1:8765/api
 ### 步骤
 
 1. 用户从浏览器（已登录 book.douban.com）F12 → Network → 任意 `book.douban.com` 请求 → Headers → 复制整行 `Cookie:` 值。
-2. 替换 `pagefolio/config.py` 中 `DOUBAN_COOKIE` 的**三引号字符串**（`"""..."""` 内部）。若 `PAGEFOLIO_DOUBAN_COOKIE` 环境变量已设置，会优先使用环境变量，此时需提示用户。
+2. 将整行值（**单行、不加引号**）写入 `pagefolio/douban_cookie.txt`，覆盖原内容。该文件已在 `.gitignore` 中，不会进入版本库。若 `PAGEFOLIO_DOUBAN_COOKIE` 环境变量已设置，会优先使用环境变量，此时需提示用户。
 3. 重启后端（见上）。
 4. 验证 Cookie 有效：
 
