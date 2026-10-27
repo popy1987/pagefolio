@@ -77,6 +77,93 @@
       letter-spacing: 0.06em;
     }
 
+    /* ===== 主页搜索 ===== */
+    .search-box {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+
+    .search-box input[type="search"] {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--surface);
+      width: 230px;
+    }
+
+    .search-box input[type="search"]:focus {
+      outline: 2px solid var(--accent-soft);
+      border-color: var(--accent);
+    }
+
+    .search-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    .search-summary {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .search-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .search-item {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 12px 14px;
+      background: var(--surface);
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .search-item:hover {
+      border-color: var(--accent);
+    }
+
+    .search-cover {
+      width: 44px;
+      aspect-ratio: 2 / 3;
+      object-fit: cover;
+      border-radius: 4px;
+      flex-shrink: 0;
+      background: var(--line);
+    }
+
+    .search-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .search-title {
+      font-weight: 600;
+      font-size: 0.98rem;
+    }
+
+    .search-credit,
+    .search-readings {
+      font-size: 0.84rem;
+      color: var(--muted);
+    }
+
     select {
       appearance: none;
       border: 1px solid var(--line);
@@ -148,11 +235,37 @@
     }
 
     .book-title {
-      font-size: 0.78rem;
-      margin-top: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      line-height: 1.3;
+      margin-top: 10px;
+      margin-bottom: 0;
       color: var(--text);
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .book-author {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin: 4px 0 0;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .book-translator {
+      font-size: 0.66rem;
+      color: var(--muted);
+      opacity: 0.75;
+      margin: 2px 0 0;
+      line-height: 1.3;
+      display: -webkit-box;
+      -webkit-line-clamp: 1;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -408,6 +521,11 @@
         <p class="subtitle">年度阅读书目</p>
       </div>
       <div class="header-actions">
+        <form class="search-box" id="search-form">
+          <input type="search" id="search-input" placeholder="搜索书名 / 作者 / 译者…"
+                 autocomplete="off" aria-label="搜索">
+          <button type="submit" class="ghost" id="btn-search">搜索</button>
+        </form>
         <button type="button" class="ghost" id="btn-export">导出</button>
         <button type="button" class="primary" id="btn-add-book">添加书目</button>
         <div class="year-select">
@@ -558,6 +676,8 @@
     const moveError = document.getElementById("move-error");
     const moveYearInput = document.getElementById("move-year");
     const moveMonthSelect = document.getElementById("move-month");
+    const searchForm = document.getElementById("search-form");
+    const searchInput = document.getElementById("search-input");
 
     let currentBookId = null;
     // 当前打开书目弹窗时这本书的阅读记录（year/month/finished_on），
@@ -649,6 +769,8 @@
               <button class="book-card" data-id="${book.id}" type="button">
                 <img class="cover" src="${coverSrc(book)}" alt="${esc(bookDisplayTitle(book))}" loading="lazy">
                 <p class="book-title">${esc(bookDisplayTitle(book))}</p>
+                ${book.author ? `<p class="book-author">${esc(book.author)}</p>` : ""}
+                ${book.translator ? `<p class="book-translator">译 ${esc(book.translator)}</p>` : ""}
               </button>
             `).join("")}
           </div>
@@ -811,6 +933,56 @@
     });
 
     yearSelect.addEventListener("change", () => loadReading(Number(yearSelect.value)));
+
+    // ===== 主页搜索：书名/副标题/作者/译者 OR 模糊检索 =====
+    function formatReadings(s) {
+      if (!s) return "暂无阅读记录";
+      return "阅读记录：" + s.split("、").map(x => {
+        const [y, m] = x.split("-");
+        return `${y} 年 ${Number(m)} 月`;
+      }).join("、");
+    }
+
+    function renderSearchResults(q, results) {
+      const head = `
+        <div class="search-head">
+          <p class="search-summary">“${esc(q)}” 的检索结果：${results.length} 本</p>
+          <button type="button" class="ghost" id="btn-back-reading">返回浏览</button>
+        </div>`;
+      const list = results.length
+        ? `<div class="search-list">${results.map(b => `
+            <button class="search-item" data-id="${b.id}" type="button">
+              <img class="search-cover" src="${coverSrc(b)}" alt="" loading="lazy">
+              <span class="search-meta">
+                <span class="search-title">${esc(bookDisplayTitle(b))}</span>
+                <span class="search-credit">${esc(bookCreditLine(b))}</span>
+                <span class="search-readings">${esc(formatReadings(b.readings))}</span>
+              </span>
+            </button>`).join("")}</div>`
+        : `<p class="empty">没有找到匹配的书目</p>`;
+      content.innerHTML = head + list;
+      document.getElementById("btn-back-reading").addEventListener("click", () => {
+        if (currentYear) loadReading(currentYear);
+      });
+      content.querySelectorAll(".search-item").forEach(item => {
+        item.addEventListener("click", () => openBook(Number(item.dataset.id)));
+      });
+    }
+
+    searchForm.addEventListener("submit", async e => {
+      e.preventDefault();
+      const q = searchInput.value.trim();
+      if (!q) return;
+      content.innerHTML = `<p class="empty">搜索中…</p>`;
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "搜索失败");
+        renderSearchResults(q, data);
+      } catch (err) {
+        content.innerHTML = `<p class="empty">搜索失败：${esc(err.message)}</p>`;
+      }
+    });
 
     // 导出年度阅读海报：新窗口打开导出页，由导出页自行拉取该年数据
     document.getElementById("btn-export").addEventListener("click", () => {

@@ -43,6 +43,34 @@ def create_app() -> Flask:
             ).fetchall()
         return jsonify([r["year"] for r in rows])
 
+    @app.get("/api/search")
+    def api_search() -> object:
+        """按关键词 OR 检索 书名/副标题/作者/译者，前后模糊匹配（LIKE %q%）。"""
+        q = (request.args.get("q") or "").strip()
+        if not q:
+            return jsonify({"error": "请输入搜索关键词"}), 400
+        # 转义 LIKE 通配符，避免用户输入 % _ \ 造成意外匹配
+        like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        with connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT b.id, b.title, b.subtitle, b.author, b.translator,
+                       b.local_cover_path, b.cover_url,
+                       GROUP_CONCAT(rm.year || '-' || printf('%02d', rm.month), '、')
+                         AS readings
+                FROM books b
+                LEFT JOIN reading_months rm ON rm.book_id = b.id
+                WHERE b.title LIKE ? ESCAPE '\\'
+                   OR b.subtitle LIKE ? ESCAPE '\\'
+                   OR b.author LIKE ? ESCAPE '\\'
+                   OR b.translator LIKE ? ESCAPE '\\'
+                GROUP BY b.id
+                ORDER BY b.id
+                """,
+                (like, like, like, like),
+            ).fetchall()
+        return jsonify([dict(r) for r in rows])
+
     @app.get("/api/reading")
     def api_reading() -> object:
         year = request.args.get("year", type=int)
@@ -60,7 +88,7 @@ def create_app() -> Flask:
                 FROM reading_months rm
                 JOIN books b ON b.id = rm.book_id
                 WHERE rm.year = ?
-                ORDER BY rm.month, b.title, rm.id
+                ORDER BY rm.month, rm.created_at ASC, rm.id ASC
                 """,
                 (year,),
             ).fetchall()
