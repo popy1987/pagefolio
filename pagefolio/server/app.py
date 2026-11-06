@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import io
+
+import qrcode
 from flask import Flask, jsonify, request, send_file, send_from_directory
 
-from pagefolio.config import COVER_DIR, DB_PATH, HOST, PORT, ROOT, WEB_DIR
+from pagefolio.config import (
+    COVER_DIR,
+    DB_PATH,
+    HOST,
+    PORT,
+    PROMO_LINK_FILE,
+    ROOT,
+    WEB_DIR,
+)
 from pagefolio.covers import download_cover_for_book
 from pagefolio.db import book_to_dict, connect
 from pagefolio.sources import fetch_from_url
@@ -34,6 +45,25 @@ def create_app() -> Flask:
     @app.get("/export.html")
     def export_page() -> object:
         return send_file(WEB_DIR / "export.html")
+
+    @app.get("/api/promo-qr")
+    def promo_qr() -> object:
+        """返回 pagefolio/promo_link.txt 中链接对应的二维码 PNG。
+
+        每次请求都实时读取文件，修改链接后无需重启服务即可生效。
+        若链接为空，返回 204 无内容（前端据此隐藏二维码）。
+        """
+        try:
+            url = PROMO_LINK_FILE.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            url = ""
+        if not url:
+            return "", 204
+        img = qrcode.make(url, box_size=8, border=2)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        return send_file(buf, mimetype="image/png")
 
     @app.get("/api/years")
     def api_years() -> object:

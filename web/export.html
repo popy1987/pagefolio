@@ -136,6 +136,21 @@
       font-size: 12px; letter-spacing: 4px; color: var(--dim);
     }
 
+    /* ===== 底部推广二维码 ===== */
+    .poster-qr {
+      margin-top: 36px;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 10px;
+    }
+    .poster-qr .qr-img {
+      width: 120px; height: 120px;
+      background: #fff; padding: 8px;
+      border: 1px solid var(--line);
+    }
+    .poster-qr .qr-caption {
+      font-size: 12px; letter-spacing: 2px; color: var(--dim);
+    }
+
     /* 未上线样式的占位 */
     .placeholder {
       min-height: 420px;
@@ -225,7 +240,13 @@
             </div>
           </section>`;
       }
-      html += `<div class="poster-foot">— PAGEFOLIO · ${year} 年度阅读 —</div>`;
+      html += `
+        <div class="poster-foot">— PAGEFOLIO · ${year} 年度阅读 —</div>
+        <div class="poster-qr">
+          <img class="qr-img" src="/api/promo-qr" alt="公众号二维码"
+               onerror="this.closest('.poster-qr').style.display='none'">
+          <p class="qr-caption">扫码查看更多</p>
+        </div>`;
       poster.innerHTML = html;
     }
 
@@ -245,6 +266,15 @@
       const originalText = btnExport.textContent;
       btnExport.textContent = "正在生成…";
       try {
+        // 等待海报内所有图片（含二维码）加载完成，避免导出空白
+        const imgs = Array.from(poster.querySelectorAll("img"));
+        await Promise.all(imgs.map(img => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise(resolve => {
+            img.addEventListener("load", () => resolve(), { once: true });
+            img.addEventListener("error", () => resolve(), { once: true });
+          });
+        }));
         const canvas = await html2canvas(poster, {
           scale: 2,
           useCORS: true,

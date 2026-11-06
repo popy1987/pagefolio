@@ -54,3 +54,20 @@ def _load_douban_cookie() -> str:
 
 
 DOUBAN_COOKIE = _load_douban_cookie()
+
+# 推广链接：导出海报底部二维码所指向的 URL（通常是公众号文章链接）。
+# 存放于本地 git-ignored 文件 pagefolio/promo_link.txt，替换其中内容即可更改二维码指向。
+PROMO_LINK_FILE = Path(__file__).resolve().parent / "promo_link.txt"
+
+
+def _load_promo_link() -> str:
+    env = os.environ.get("PAGEFOLIO_PROMO_LINK", "").strip()
+    if env:
+        return env
+    try:
+        return PROMO_LINK_FILE.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        return ""
+
+
+PROMO_LINK = _load_promo_link()
