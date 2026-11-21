@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pagefolio">
+  <rect width="64" height="64" rx="14" fill="#3d5a4c"/>
+  <path d="M32 20c-5-3-10-4-16-4v30c6 0 11 1 16 4V20z" fill="#f7f5f2"/>
+  <path d="M32 20c5-3 10-4 16-4v30c-6 0-11 1-16 4V20z" fill="#d8e4dd"/>
+</svg>
